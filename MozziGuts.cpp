@@ -473,7 +473,12 @@ static void teensyAudioOutput() {
   startSecondAudioADC();
 #endif
 
+#if (STEREO_HACK == true)
   analogWrite(AUDIO_CHANNEL_1_PIN, (int)output_buffer.read());
+  analogWrite(AUDIO_CHANNEL_2_PIN, (int)output_buffer2.read());
+#else
+  analogWrite(AUDIO_CHANNEL_1_PIN, (int)output_buffer.read());
+#endif
 }
 #elif IS_STM32()
 static void pwmAudioOutput() {

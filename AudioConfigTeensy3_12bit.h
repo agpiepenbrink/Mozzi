@@ -14,10 +14,10 @@
 #define AUDIO_CHANNEL_1_PIN A14
 #elif defined(__MK64FX512__) || defined(__MK66FX1M0__)
 #define AUDIO_CHANNEL_1_PIN A21
+#define AUDIO_CHANNEL_2_PIN A22
 #else
 #error "Unknown Teensy"
 #endif
 #endif
 
 #endif        //  #ifndef AUDIOCONFIGTEENSY3_12BIT_H
-
