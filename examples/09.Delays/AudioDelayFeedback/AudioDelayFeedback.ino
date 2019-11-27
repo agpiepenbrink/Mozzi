@@ -23,7 +23,7 @@
 #include <AudioDelayFeedback.h>
 #include <mozzi_midi.h> // for mtof
 
-#define CONTROL_RATE 100 // Hz
+#define CONTROL_RATE 128 // Hz, powers of 2 are most reliable
 
 Oscil<TRIANGLE_ANALOGUE512_NUM_CELLS, AUDIO_RATE> aTriangle(TRIANGLE_ANALOGUE512_DATA); // audio oscillator
 Oscil<TRIANGLE512_NUM_CELLS, CONTROL_RATE> kDelSamps(TRIANGLE512_DATA); // for modulating delay time, measured in audio samples
@@ -58,8 +58,8 @@ void updateControl(){
 
 int updateAudio(){
   char asig = aTriangle.next(); // get this so it can be used twice without calling next() again
-  //return asig/8 + aDel.next(asig, del_samps); // mix some straight signal with the delayed signal
-  //return aDel.next(aTriangle.next(), del_samps); // instead of the previous 2 lines for only the delayed signal
+  //return asig/8 + aDel.next(asig, (uint16_t) del_samps); // mix some straight signal with the delayed signal
+  //return aDel.next(aTriangle.next(), (uint16_t) del_samps); // instead of the previous 2 lines for only the delayed signal
   return asig/8 + aDel.next(asig, deltime); // mix some straight signal with the delayed signal
 }
 
