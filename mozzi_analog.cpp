@@ -22,6 +22,8 @@
 #include <ADC.h>
 #elif IS_STM32()
 #include <STM32ADC.h>
+#elif IS_SAMD21()
+#include <wiring_private.h>
 #endif
 
 // defined in Mozziguts.cpp
@@ -35,6 +37,16 @@
 #endif
 
 extern uint8_t analog_reference;
+
+#if IS_SAMD21()
+// From wiring_analog.c
+// Wait for synchronization of registers between the clock domains
+static __inline__ void syncADC() __attribute__((always_inline, unused));
+static void syncADC() {
+  while (ADC->STATUS.bit.SYNCBUSY == 1)
+    ;
+}
+#endif
 
 void setupFastAnalogRead(int8_t speed)
 {
@@ -57,6 +69,31 @@ void setupFastAnalogRead(int8_t speed)
 	if (speed == FASTEST_ADC) adc.setSampleRate(ADC_SMPR_1_5);
 	else if (speed == FASTER_ADC) adc.setSampleRate(ADC_SMPR_13_5);
         else (adc.setSampleRate(ADC_SMPR_41_5));
+#elif IS_SAMD21()
+	while(GCLK->STATUS.reg & GCLK_STATUS_SYNCBUSY);
+
+	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID( GCM_ADC ) | // Generic Clock ADC
+											GCLK_CLKCTRL_GEN_GCLK0     | // Generic Clock Generator 0 is source
+											GCLK_CLKCTRL_CLKEN ;
+
+	syncADC();
+
+	ADC->CTRLB.reg = ADC_CTRLB_PRESCALER_DIV32 |    // Divide Clock by 32. XXX TODO support fast/faster/fastest
+									 ADC_CTRLB_RESSEL_10BIT;         // 10 bits resolution as default
+
+	ADC->SAMPCTRL.reg = 0x00;                        // Set minimum Sampling Time Length
+
+	syncADC();
+
+	ADC->INPUTCTRL.reg = ADC_INPUTCTRL_MUXNEG_GND;   // No Negative input (Internal Ground)
+
+	// Averaging (see datasheet table in AVGCTRL register description)
+	ADC->AVGCTRL.reg = ADC_AVGCTRL_SAMPLENUM_1 |    // 1 sample only (no oversampling nor averaging)
+										 ADC_AVGCTRL_ADJRES(0x0ul);   // Adjusting result by 0
+
+	analogReference( AR_DEFAULT ) ; // Analog Reference is AREF pin (3.3v)
+
+	syncADC();
 #endif
 }
 
@@ -80,6 +117,14 @@ void setupMozziADC(int8_t speed) {
 	ADCSRA |= (1 << ADIE); // adc Enable Interrupt
 	setupFastAnalogRead(speed);
 	adcDisconnectAllDigitalIns();
+#elif IS_SAMD21()
+	setupFastAnalogRead(speed);
+	ADC->INTENCLR.reg = ADC_INTENCLR_RESRDY; // Clear result ready interrupt
+	ADC->INTENSET.reg = ADC_INTENSET_RESRDY; // Set result ready interrupt
+	NVIC_SetPriority(ADC_IRQn, 1);    // Set the Nested Vector Interrupt Controller (NVIC) priority to 1 (just below audio timer)
+	NVIC_EnableIRQ(ADC_IRQn);         // Connect ADC to Nested Vector Interrupt Controller (NVIC)
+	syncADC();
+	ADC->CTRLA.bit.ENABLE = 0x01; // Enable ADC XXX can we do this once instead of on every reading like in wiring_analog.c?
 #else
 #warning Fast ADC not implemented on this platform
 #endif
@@ -183,6 +228,20 @@ void adcStartConversion(uint8_t channel) {
 	// start the conversion
 	ADCSRA |= (1 << ADSC);
 #endif
+#elif IS_SAMD21()
+	pinPeripheral(channel, PIO_ANALOG); // Select pin
+	syncADC();
+	ADC->INPUTCTRL.bit.MUXPOS = g_APinDescription[channel].ulADCChannelNumber; // Selection for the positive ADC input
+
+	// syncADC();
+  // ADC->CTRLA.bit.ENABLE = 0x01;             // Enable ADC
+
+	// Start conversion
+	syncADC();
+	ADC->SWTRIG.bit.START = 1;
+
+	// Clear the Data Ready flag
+	ADC->INTFLAG.reg = ADC_INTFLAG_RESRDY;
 #else
 #warning Fast analog read not implemented on this platform
 #endif
@@ -256,6 +315,12 @@ void startSecondControlADC() {
 	adc.startConversion();
 #elif IS_AVR()
 	ADCSRA |= (1 << ADSC); // start a second conversion on the current channel
+#elif IS_SAMD21()
+	// Start conversion
+	// syncADC();
+	// ADC->SWTRIG.bit.START = 1;
+  // syncADC();
+	// ADC->INTFLAG.reg = ADC_INTFLAG_RESRDY; // Reset interrupt
 #endif
 }
 
@@ -267,6 +332,12 @@ void receiveSecondControlADC(){
 	analog_readings[current_channel] = adc.getData();
 #elif IS_AVR()
 	analog_readings[current_channel] = ADC; // officially (ADCL | (ADCH << 8)) but the compiler works it out
+#elif IS_SAMD21()
+	analog_readings[current_channel] = ADC->RESULT.reg;
+  ADC->INTFLAG.reg = ADC_INTFLAG_RESRDY; // Reset interrupt
+	syncADC();
+	// ADC->CTRLA.bit.ENABLE = 0x00;             // Disable ADC
+	// syncADC();
 #endif
 }
 
@@ -284,8 +355,10 @@ void adc0_isr(void)
 void stm32_adc_eoc_handler()
 #elif IS_AVR()
 ISR(ADC_vect, ISR_BLOCK)
+#elif IS_SAMD21()
+void ADC_Handler(void)
 #endif
-#if IS_TEENSY3() || IS_STM32() || IS_AVR()
+#if IS_TEENSY3() || IS_STM32() || IS_AVR() || IS_SAMD21()
 {
 	if (first)
 	{
@@ -298,7 +371,7 @@ ISR(ADC_vect, ISR_BLOCK)
   	// 3us
     receiveSecondControlADC();
     adcReadSelectedChannels();
-   	first=true;
+   	// first=true;
 	}
 }
 #endif
