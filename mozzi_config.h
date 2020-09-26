@@ -81,6 +81,7 @@ in mozz_config.h
 
 //AUDIO_INPUT_CHANNEL = analogPinToChannel(AUDIO_INPUT_PIN)
 
+#if not defined (STEREO_HACK)
 /** @ingroup core
 This sets an option for stereo output, a hack which requires
 variables audio_signal_1 and audio_signal_2 to be set in updateAudio(),
@@ -88,7 +89,7 @@ instead of returning a single audio value as is usual for standard mono.
 You need to have \#define STEREO_HACK true in mozzi_config.h
 */
 #define STEREO_HACK false
-
+#endif
 
 /**
   Uncomment this line if you want to use Mozzi with an external DAC of type MCP4922. Note that you will need the MCP49XX library (see AudioConfigMCP4922 for details.
